@@ -47,20 +47,29 @@ run s =   evalStateT ( run' s)  tupElem >> return ()
         tupElem = (,) lis lis
 
 run' :: [BrainFuck] -> StateT ([Int],[Int]) IO [BrainFuck]
-run' s =case s of
-    (ValInc:xs)  -> get >>= (\((p:ps),q) -> put ((p+1):ps,q)) >> run' xs
-    (ValDec:xs)  -> get >>= (\((p:ps),q) -> put ((p-1):ps,q)) >> run' xs
-    (PtrInc:xs)  -> get >>= (\(ps,q:qs) -> put $ (inc q ps,qs)  ) >> run' xs 
-        where inc [] ps = 0:ps
-              inc p  ps = p:ps
-    (PtrDec:xs)  -> get >>=  (\ ((p:ps) ,qs) -> put  (ps,dec p qs))  >> run' xs 
-        where dec [] ps = 0:ps
-              dec p  ps = p:ps
-    (Put:xs)     -> get >>= ( \(p:ps,q) -> (liftIO $ putChar $ chr p) ) >> run' xs
-    (Get:xs)     -> get >>= ( \(p:ps,q) ->   liftIO getLine    >>= (\ x -> put (x:ps,q) ) )  >> run' xs
-        -- where digits  xs = mkIntValue . (foldl (&&) True $ map isNumber xs) 
-    all@((Loop bf):xs) -> run' xs >>= get >>= ( \ (p,q) -> case p of
-                                                    (0:ps) -> run' xs
-                                                    (n:ns) -> run' all )
+run' s = case s of
+    (ValInc:xs)  -> get >>= (\ ((p:ps),q) -> put ((p+1):ps,q)) >> run' xs
+    (ValDec:xs)  -> get >>= (\ ((p:ps),q) -> put ((p-1):ps,q)) >> run' xs
+    (PtrInc:xs)  -> get >>= (\ (ps,q:qs) -> put (q:ps,qs)  ) >> run' xs 
+    (PtrDec:xs)  -> get >>=  (\ ((p:ps) ,qs) -> put  (ps,p:qs))  >> run' xs 
+    (Put:xs)     -> get >>= ( \ (p:ps,q) -> (liftIO $ putChar $ chr p) ) >> run' xs
+    (Get:xs)     -> do
+        (p:ps,q) <- get
+        t        <- liftIO getLine
+        if isNum t
+        then do
+            put ((read t):ps, q) 
+            run' xs
+        else run' xs
+            where
+                isNum :: String -> Bool
+                isNum s = let b = foldl1 (&&) $ map isNumber s
+                          in b
+    all@((Loop bf):xs) -> do
+        run' bf 
+        (p,q) <-get 
+        case p of
+          (0:ns) -> run' xs
+          (n:ns) -> run' all 
     [] -> return []
 
