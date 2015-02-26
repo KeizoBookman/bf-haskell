@@ -38,7 +38,8 @@ parse src =  case src of
                 in get >>= (\s -> put ((Loop  ys):s) ) >> parse y
     (']':xs) ->  return []
     ('\n':xs) -> parse xs
-    _:xs -> parse []
+    (' ':xs) -> parse xs
+    (_:xs) -> parse []
 
 run :: [BrainFuck] -> IO ()
 run s =   evalStateT ( run' s) (take 100 [0,0..],take 100 [0,0..])  >> return ()
@@ -49,21 +50,24 @@ run' s = case s of
     (ValDec:xs)  -> get >>= (\ ((p:ps),q) -> put ((p-1):ps,q)) >> run' xs
     (PtrInc:xs)  -> get >>= (\ (ps,q:qs) -> put (q:ps,qs)  ) >> run' xs 
     (PtrDec:xs)  -> get >>=  (\ ((p:ps) ,qs) -> put  (ps,p:qs))  >> run' xs 
-    (Put:xs)     -> get >>= ( \ (p:ps,q) -> (liftIO  $ putChar $ chr p) ) >> run' xs
+    (Put:xs)     -> get >>= ( \ (p:ps,q) -> (liftIO  $ putAtom p) ) >> run' xs
     (Get:xs)     -> do
         (p:ps,q) <- get
-        t        <- liftIO $ hGetLine stdin
-        if isNum t
-        then do
-            put ((read t):ps, q) 
-            run' xs
-        else run' xs
-            where
-                isNum :: String -> Bool
-                isNum s = let b = foldl1 (&&) $ map isNumber s
-                          in b
-    all@((Loop bf):xs) -> run' bf >> get >>= (\(p:_,s) -> case p of
+        t        <- liftIO $ hGetChar stdin
+        put (((ord t) :: Int):ps, q) 
+        run' xs
+    all@((Loop bf):xs) -> (run' bf ) >> get >>= (\(p:_,s) -> case p of
                                                             0 -> run' xs
                                                             n -> run' all)
     [] -> return []
 
+
+putAtom :: Int -> IO ()
+putAtom ch = (case b of
+                True -> putChar $ chr ch
+                False -> putStr $ show ch ++ " ")
+        where
+           f x = (ord 'A') < x  && x < (ord 'z')
+           g x = 47 < x && x < 58
+           b = f ch
+              
