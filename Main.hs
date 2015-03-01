@@ -1,73 +1,59 @@
 module Main where
 import System.Environment
 import System.IO
-import Control.Monad.State
+import Data.Char (chr, ord)
 import Control.Applicative
-import Data.Char (chr, ord, isNumber)
-import System.FilePath
-import Control.Arrow
+import Control.Monad
+import Text.ParserCombinators.ReadP hiding (many)
 
 data BrainFuck = PtrInc | PtrDec | ValInc | ValDec | Put | Get | Loop [BrainFuck]
     deriving (Show)
 
-ctx :: String
-ctx = " ========execution=====\n\n\n"
 main :: IO ()
 main = do
     args <- getArgs 
     case args of
         []  -> return ()
-        [x] ->  ( readFile x ) >>= readProcessing >>= (\ src -> run $ reverse $ execState (parse src)  [] ) >> putChar '\n'
-            where readProcessing src = putStrLn src >>  putStrLn ctx >> return src
-        _ -> return ()
+        [path] -> do
+          src <- readFile path
+          putStrLn src
+          putStrLn ctx
+          run $ parse $ filter (`elem` "+-><.,[]") src
+          putChar '\n'
+    where
+        ctx = " ========execution=====\n\n\n"
 
+parse :: String -> [BrainFuck]
+parse = fst . last . readP_to_S (many bf) where
+    bf = ValInc <$ char '+'
+     <|> ValDec <$ char '-'
+     <|> PtrInc <$ char '>' 
+     <|> PtrDec <$ char '<' 
+     <|> Put <$ char '.'
+     <|> Get <$ char ','
+     <|> char '[' *> (Loop <$> many bf) <* char ']'
+     <|> pfail
 
+type Tape = ([Int], Int, [Int])
 
+next :: Tape -> Tape
+next (x:xs, y, ys) = (xs, x, y:ys)
 
+prev :: Tape -> Tape
+prev (xs, x, y:ys) = (x:xs, y, ys)
 
-parse :: String -> State  [BrainFuck] String
-parse  [] = return []
-parse src =  case src of
-    ('+':xs) -> get >>= (\s -> put (ValInc:s) ) >> (parse xs)
-    ('-':xs) -> get >>= (\s -> put (ValDec:s) )  >> parse xs
-    ('>':xs) -> get >>= (\s -> put (PtrInc:s) ) >> parse xs
-    ('<':xs) -> get >>= (\s -> put (PtrDec:s) ) >> parse xs
-    ('.':xs) -> get >>= (\s -> put (Put:s) ) >> parse xs
-    (',':xs) -> get >>= (\s -> put (Get:s) ) >> parse xs
-    ('[':xs) -> let (y,ys) = runState  (parse xs) []
-                in get >>= (\s -> put ((Loop  ys):s) ) >> parse y
-    (']':xs) ->  return []
-    ('\n':xs) -> parse xs
-    (' ':xs) -> parse xs
-    (_:xs) -> parse []
+adjust :: (Int -> Int) -> Tape -> Tape
+adjust f (xs, x, ys) = let y = f x in seq y (xs, y, ys)
 
 run :: [BrainFuck] -> IO ()
-run s =   evalStateT ( run' s) (take 100 [0,0..],take 100 [0,0..])  >> return ()
-
-run' :: [BrainFuck] -> StateT ([Int],[Int]) IO [BrainFuck]
-run' s = case s of
-    (ValInc:xs)  -> get >>= (\ ((p:ps),q) -> put ((p+1):ps,q)) >> run' xs
-    (ValDec:xs)  -> get >>= (\ ((p:ps),q) -> put ((p-1):ps,q)) >> run' xs
-    (PtrInc:xs)  -> get >>= (\ (ps,q:qs) -> put (q:ps,qs)  ) >> run' xs 
-    (PtrDec:xs)  -> get >>=  (\ ((p:ps) ,qs) -> put  (ps,p:qs))  >> run' xs 
-    (Put:xs)     -> get >>= ( \ (p:ps,q) -> (liftIO  $ putAtom p) ) >> run' xs
-    (Get:xs)     -> do
-        (p:ps,q) <- get
-        t        <- liftIO $ hGetChar stdin
-        put (((ord t) :: Int):ps, q) 
-        run' xs
-    all@((Loop bf):xs) -> (run' bf ) >> get >>= (\(p:_,s) -> case p of
-                                                            0 -> run' xs
-                                                            n -> run' all)
-    [] -> return []
-
-
-putAtom :: Int -> IO ()
-putAtom ch = (case b of
-                True -> putChar $ chr ch
-                False -> putStr $ show ch ++ " ")
-        where
-           f x = (ord 'A') < x  && x < (ord 'z')
-           g x = 47 < x && x < 58
-           b = f ch
-              
+run = void . foldM run' (repeat 0, 0, repeat 0) where
+    run' tape@(_, x, _) inst = case inst of
+        ValInc -> return $ adjust succ tape
+        ValDec -> return $ adjust pred tape
+        PtrInc -> return $ next tape
+        PtrDec -> return $ prev tape
+        Put    -> tape <$ putChar (chr $ (`mod` 128) $ abs x)
+        Get    -> getChar >>= \c -> return $ adjust (const $ ord c) tape
+        loop@(Loop insts)
+            | x == 0 -> return tape
+            | otherwise -> foldM run' tape insts >>= flip run' loop
