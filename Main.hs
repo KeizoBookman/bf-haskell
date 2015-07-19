@@ -47,7 +47,7 @@ adjust f (xs, x, ys) = let y = f x in seq y (xs, y, ys)
 
 run :: [BrainFuck] -> IO ()
 run = void . foldM run' (repeat 0, 0, repeat 0) where
---    run' :: Tape -> [[BrainFuck]] -> IO Tape
+    run' :: Tape -> BrainFuck -> IO Tape
     run' tape@(_, x, _) inst = case inst of
         ValInc -> return $ adjust succ tape
         ValDec -> return $ adjust pred tape
