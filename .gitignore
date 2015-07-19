@@ -3,3 +3,5 @@ Main
 Main.o
 Main.hi
 cabal.sandbox.config
+.stack-work/
+dist/
