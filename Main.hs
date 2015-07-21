@@ -16,12 +16,8 @@ main = do
         []  -> return ()
         [path] -> do
           src <- readFile path
-          putStrLn src
-          putStrLn ctx
           run $ parse $ filter (`elem` "+-><.,[]") src
           putChar '\n'
-    where
-        ctx = " ========execution=====\n\n\n"
 
 parse :: String -> [BrainFuck]
 parse = fst . last . readP_to_S (many bf) where
